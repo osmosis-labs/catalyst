@@ -1,7 +1,7 @@
 # Catalyst
 
 <p align="center">
-  <img src="./assets/Catalyst.png" alt="Catalyst" width="20%">
+  <img src="./assets/Catalyst.png" alt="Catalyst" width="35%">
 </p>
 
 ## Overview
