@@ -20,7 +20,7 @@ pub fn query_fulfilled_txs(deps: Deps) -> StdResult<Binary> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execute::add_tx;
+    use crate::execute::add_pending_tx;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{coins, Coin};
     use cosmwasm_std::{from_json, Uint128};
@@ -47,7 +47,7 @@ mod tests {
 
         // Add 3 transactions
         for _ in 0..3 {
-            add_tx(
+            add_pending_tx(
                 deps.as_mut(),
                 env.clone(),
                 info.clone(),

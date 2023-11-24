@@ -11,9 +11,16 @@ pub struct InstantiateMsg {
 /// Message type for `execute` entry_point
 #[cw_serde]
 pub enum ExecuteMsg {
-    AddTx { owner: String, output_coin: Coin },
-    FulfillTx { tx_id: u64 },
-    RemoveTx { tx_id: u64 },
+    AddTx {
+        destination_addr: String,
+        output_coin: Coin,
+    },
+    FulfillTx {
+        tx_id: u64,
+    },
+    RemoveTx {
+        tx_id: u64,
+    },
 }
 
 /// Message type for `migrate` entry_point

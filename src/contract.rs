@@ -4,10 +4,12 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Std
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::execute::{add_tx, fulfill_tx, move_to_fulfilled_tx, remove_tx};
+use crate::execute::{
+    add_pending_tx, fulfill_pending_tx, move_pending_tx_to_fulfilled_tx, remove_pending_tx,
+};
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 use crate::query::{query_fulfilled_txs, query_pending_txs};
-use crate::state::{State, STATE};
+use crate::state::{State, FULFILL_REPLY_STATES, STATE};
 
 // version info for migration info
 pub const FULFILL_ID: u64 = 1u64;
@@ -65,9 +67,12 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::AddTx { owner, output_coin } => add_tx(deps, env, info, owner, output_coin),
-        ExecuteMsg::FulfillTx { tx_id } => fulfill_tx(deps, env, info, tx_id),
-        ExecuteMsg::RemoveTx { tx_id } => remove_tx(deps, env, info, tx_id),
+        ExecuteMsg::AddTx {
+            destination_addr,
+            output_coin,
+        } => add_pending_tx(deps, env, info, destination_addr, output_coin),
+        ExecuteMsg::FulfillTx { tx_id } => fulfill_pending_tx(deps, env, info, tx_id),
+        ExecuteMsg::RemoveTx { tx_id } => remove_pending_tx(deps, env, info, tx_id),
     }
 }
 
@@ -84,10 +89,15 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 /// For more info on submessage and reply, see https://github.com/CosmWasm/cosmwasm/blob/main/SEMANTICS.md#submessages
 #[cfg_attr(not(feature = "imported"), entry_point)]
 pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
-    deps.api.debug(&format!("executing swap reply: {msg:?}"));
+    deps.api
+        .debug(&format!("executing bank send reply: {msg:?}"));
     if msg.id.clone() == FULFILL_ID {
         let msg_clone = msg.clone();
-        move_to_fulfilled_tx(deps, env, msg, msg_clone.id.clone())
+
+        let fulfill_reply_state = FULFILL_REPLY_STATES.load(deps.storage, msg_clone.id)?;
+        FULFILL_REPLY_STATES.remove(deps.storage, msg_clone.id);
+
+        move_pending_tx_to_fulfilled_tx(deps, env, msg, fulfill_reply_state)
     } else {
         Ok(Response::new())
     }

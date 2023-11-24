@@ -1,6 +1,7 @@
 use crate::execute::Tx;
 use cosmwasm_schema::cw_serde;
-use cw_storage_plus::Item;
+use cosmwasm_std::Addr;
+use cw_storage_plus::{Item, Map};
 
 pub const CONFIG_KEY: &[u8] = b"config";
 
@@ -13,3 +14,10 @@ pub struct State {
     pub fulfilled_txs: Vec<Tx>,
     pub next_id: u64,
 }
+
+#[cw_serde]
+pub struct FulfillState {
+    pub fulfiller_addr: Addr,
+}
+
+pub const FULFILL_REPLY_STATES: Map<u64, FulfillState> = Map::new("fulfill_reply_states");
