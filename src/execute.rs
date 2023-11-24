@@ -1,9 +1,9 @@
-use crate::state::{State, CONFIG_KEY};
+use crate::state::{State, STATE};
 use crate::ContractError;
 use cosmwasm_std::{
     BankMsg, Coin, DepsMut, Env, MessageInfo, Reply, Response, SubMsg, SubMsgResponse, SubMsgResult,
 };
-use cw_storage_plus::Item;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -14,48 +14,61 @@ pub struct Tx {
     pub coin: Coin,
 }
 
+// add_tx is called by the module account assigned at instantiation, which
+// adds a pending incoming transaction to the contract's store.
+// This store is to be used as a pseudo order book, where market makers can
+// select one of these pending transactions to fulfill. A tx is removed
+// from this store when either a market maker fulfills it or the protocol
+// deems sufficent confirmations have passed to utilize the funds via
+// a pool swap.
 pub fn add_tx(
     deps: DepsMut,
     _env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     destination_addr: String,
     coin: Coin,
 ) -> Result<Response, ContractError> {
-    let config_key_str = std::str::from_utf8(CONFIG_KEY).unwrap();
-    let config = Item::new(config_key_str);
-    let mut state: State = config.load(deps.storage).map_err(ContractError::Std)?;
+    let mut state: State = STATE.load(deps.storage).map_err(ContractError::Std)?;
+
+    // Check if the sender is the module account
+    if info.sender != state.module_account {
+        return Err(ContractError::Unauthorized {});
+    }
 
     let new_id = state.next_id;
-    state.txs.push(Tx {
+    state.pending_txs.push(Tx {
         id: new_id,
         destination_addr,
         coin,
     });
     state.next_id += 1;
 
-    config
+    STATE
         .save(deps.storage, &state)
         .map_err(ContractError::Std)?;
 
     Ok(Response::new())
 }
 
+// fulfill_tx is to be called by market makers looking to fulfill a pending
+// incoming transaction. This will send the funds to the destination address.
+// In the event this send succeeds, the transaction is moved to the fulfilled
+// transactions store. From there, we will utilize this store to pay the market
+// maker with the incoming funds that originated from the tx creator.
 pub fn fulfill_tx(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
     tx_id: u64,
 ) -> Result<Response, ContractError> {
-    let config_key_str = std::str::from_utf8(CONFIG_KEY).unwrap();
-    let config = Item::new(config_key_str);
-    let state: State = config.load(deps.storage).map_err(ContractError::Std)?;
+    let state: State = STATE.load(deps.storage).map_err(ContractError::Std)?;
 
-    let tx_position = state.txs.iter().position(|tx| tx.id == tx_id);
+    let tx_position = state.pending_txs.iter().position(|tx| tx.id == tx_id);
 
     let tx: Tx;
     match tx_position {
         Some(index) => {
-            tx = state.txs[index].clone();
+            tx = state.pending_txs[index].clone();
         }
         None => {
             return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
@@ -81,6 +94,10 @@ pub fn fulfill_tx(
         .add_submessage(SubMsg::reply_on_success(bank_send_msg, tx.id)))
 }
 
+// move_to_fulfilled_tx is called by the contract when a market maker has
+// successfully fulfilled a pending incoming transaction. This will move the
+// transaction from the pending transactions store to the fulfilled transactions
+// store.
 pub fn move_to_fulfilled_tx(
     deps: DepsMut,
     _env: Env,
@@ -88,14 +105,12 @@ pub fn move_to_fulfilled_tx(
     tx_id: u64,
 ) -> Result<Response, ContractError> {
     if let SubMsgResult::Ok(_) = msg.result {
-        let config_key_str = std::str::from_utf8(CONFIG_KEY).unwrap();
-        let config = Item::new(config_key_str);
-        let mut state: State = config.load(deps.storage).map_err(ContractError::Std)?;
+        let mut state: State = STATE.load(deps.storage).map_err(ContractError::Std)?;
 
-        let tx_position = state.txs.iter().position(|tx| tx.id == tx_id);
+        let tx_position = state.pending_txs.iter().position(|tx| tx.id == tx_id);
         match tx_position {
             Some(index) => {
-                let tx = state.txs.remove(index);
+                let tx = state.pending_txs.remove(index);
                 state.fulfilled_txs.push(tx);
             }
             None => {
@@ -105,7 +120,7 @@ pub fn move_to_fulfilled_tx(
             }
         }
 
-        config
+        STATE
             .save(deps.storage, &state)
             .map_err(ContractError::Std)?;
 
@@ -117,20 +132,27 @@ pub fn move_to_fulfilled_tx(
     )))
 }
 
+// remove_tx is called by the contract when a pending incoming transaction
+// is never fulfilled, and sufficient time has passed to deem the transaction
+// as valid. This will remove the transaction from the pending transactions
+// store.
 pub fn remove_tx(
     deps: DepsMut,
     _env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     tx_id: u64,
 ) -> Result<Response, ContractError> {
-    let config_key_str = std::str::from_utf8(CONFIG_KEY).unwrap();
-    let config = Item::new(config_key_str);
-    let mut state: State = config.load(deps.storage).map_err(ContractError::Std)?;
+    let mut state: State = STATE.load(deps.storage).map_err(ContractError::Std)?;
 
-    let tx_position = state.txs.iter().position(|tx| tx.id == tx_id);
+    // Check if the sender is the module account
+    if info.sender != state.module_account {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    let tx_position = state.pending_txs.iter().position(|tx| tx.id == tx_id);
     match tx_position {
         Some(index) => {
-            state.txs.remove(index);
+            state.pending_txs.remove(index);
         }
         None => {
             return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
@@ -139,7 +161,7 @@ pub fn remove_tx(
         }
     }
 
-    config
+    STATE
         .save(deps.storage, &state)
         .map_err(ContractError::Std)?;
 
@@ -158,7 +180,7 @@ mod tests {
     fn test_add_tx() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let info = mock_info("sender", &coins(2, "token"));
+        let info = mock_info("module_account", &coins(2, "token"));
 
         let destination_addr = "destination_addr".to_string();
         let coin = Coin {
@@ -167,15 +189,13 @@ mod tests {
         };
 
         // Initialize state
-        let config_key_str = std::str::from_utf8(CONFIG_KEY).unwrap();
-        let config = Item::new(config_key_str);
         let state = State {
-            market_maker: "maker".to_string(),
-            txs: vec![],
+            module_account: "module_account".to_string(),
+            pending_txs: vec![],
             fulfilled_txs: vec![],
             next_id: 0,
         };
-        config.save(deps.as_mut().storage, &state).unwrap();
+        STATE.save(deps.as_mut().storage, &state).unwrap();
 
         // Call add_tx
         add_tx(
@@ -188,19 +208,19 @@ mod tests {
         .unwrap();
 
         // Load state from storage
-        let state: State = config.load(deps.as_ref().storage).unwrap();
+        let state: State = STATE.load(deps.as_ref().storage).unwrap();
 
         // Check if the transaction was added
-        assert_eq!(state.txs.len(), 1);
-        assert_eq!(state.txs[0].destination_addr, destination_addr);
-        assert_eq!(state.txs[0].coin, coin);
+        assert_eq!(state.pending_txs.len(), 1);
+        assert_eq!(state.pending_txs[0].destination_addr, destination_addr);
+        assert_eq!(state.pending_txs[0].coin, coin);
     }
 
     #[test]
     fn test_fulfill_tx() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let info = mock_info("sender", &coins(2, "token"));
+        let info = mock_info("module_account", &coins(2, "token"));
 
         let destination_addr = "destination_addr".to_string();
         let coin = Coin {
@@ -209,15 +229,13 @@ mod tests {
         };
 
         // Initialize state
-        let config_key_str = std::str::from_utf8(CONFIG_KEY).unwrap();
-        let config = Item::new(config_key_str);
         let state = State {
-            market_maker: "maker".to_string(),
-            txs: vec![],
+            module_account: "module_account".to_string(),
+            pending_txs: vec![],
             fulfilled_txs: vec![],
             next_id: 0,
         };
-        config.save(deps.as_mut().storage, &state).unwrap();
+        STATE.save(deps.as_mut().storage, &state).unwrap();
 
         // Add a transaction
         add_tx(
@@ -240,7 +258,7 @@ mod tests {
     fn test_move_to_fulfilled_tx() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let info = mock_info("sender", &coins(2, "token"));
+        let info = mock_info("module_account", &coins(2, "token"));
 
         let destination_addr = "destination_addr".to_string();
         let coin = Coin {
@@ -249,15 +267,13 @@ mod tests {
         };
 
         // Initialize state
-        let config_key_str = std::str::from_utf8(CONFIG_KEY).unwrap();
-        let config = Item::new(config_key_str);
         let state = State {
-            market_maker: "maker".to_string(),
-            txs: vec![],
+            module_account: "module_account".to_string(),
+            pending_txs: vec![],
             fulfilled_txs: vec![],
             next_id: 0,
         };
-        config.save(deps.as_mut().storage, &state).unwrap();
+        STATE.save(deps.as_mut().storage, &state).unwrap();
 
         // Add a transaction
         add_tx(
@@ -281,10 +297,10 @@ mod tests {
         move_to_fulfilled_tx(deps.as_mut(), env.clone(), msg, 0).unwrap();
 
         // Load state from storage
-        let state: State = config.load(deps.as_ref().storage).unwrap();
+        let state: State = STATE.load(deps.as_ref().storage).unwrap();
 
         // Check if the transaction was moved to fulfilled transactions
-        assert_eq!(state.txs.len(), 0);
+        assert_eq!(state.pending_txs.len(), 0);
         assert_eq!(state.fulfilled_txs.len(), 1);
         assert_eq!(state.fulfilled_txs[0].id, 0);
     }
@@ -293,7 +309,7 @@ mod tests {
     fn test_remove_tx() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let info = mock_info("sender", &coins(2, "token"));
+        let info = mock_info("module_account", &coins(2, "token"));
 
         let owner = "owner".to_string();
         let output_coin = Coin {
@@ -302,15 +318,13 @@ mod tests {
         };
 
         // Initialize state
-        let config_key_str = std::str::from_utf8(CONFIG_KEY).unwrap();
-        let config = Item::new(config_key_str);
         let state = State {
-            market_maker: "maker".to_string(),
-            txs: vec![],
+            module_account: "module_account".to_string(),
+            pending_txs: vec![],
             fulfilled_txs: vec![],
             next_id: 0,
         };
-        config.save(deps.as_mut().storage, &state).unwrap();
+        STATE.save(deps.as_mut().storage, &state).unwrap();
 
         // Add 3 transactions
         for _ in 0..3 {
@@ -328,10 +342,10 @@ mod tests {
         remove_tx(deps.as_mut(), env.clone(), info.clone(), 1).unwrap();
 
         // Load state from storage
-        let state: State = config.load(deps.as_ref().storage).unwrap();
+        let state: State = STATE.load(deps.as_ref().storage).unwrap();
 
         // Check if only 2 transactions remain
-        assert_eq!(state.txs.len(), 2);
-        assert!(state.txs.iter().find(|&tx| tx.id == 1).is_none());
+        assert_eq!(state.pending_txs.len(), 2);
+        assert!(state.pending_txs.iter().find(|&tx| tx.id == 1).is_none());
     }
 }

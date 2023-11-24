@@ -4,8 +4,10 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, Std
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::execute::{add_tx, move_to_fulfilled_tx};
+use crate::execute::{add_tx, fulfill_tx, move_to_fulfilled_tx, remove_tx};
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use crate::query::{query_fulfilled_txs, query_pending_txs};
+use crate::state::{State, STATE};
 
 // version info for migration info
 pub const FULFILL_ID: u64 = 1u64;
@@ -18,9 +20,19 @@ pub fn instantiate(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    _msg: InstantiateMsg,
+    msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
+    STATE.save(
+        deps.storage,
+        &State {
+            module_account: msg.module_account,
+            pending_txs: vec![],
+            fulfilled_txs: vec![],
+            next_id: 1,
+        },
+    )?;
 
     // With `Response` type, it is possible to dispatch message to invoke external logic.
     // See: https://github.com/CosmWasm/cosmwasm/blob/main/SEMANTICS.md#dispatching-messages
@@ -47,25 +59,24 @@ pub fn migrate(_deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, C
 /// Handling contract execution
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    _deps: DepsMut,
-    _env: Env,
-    _info: MessageInfo,
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::AddTx { owner, output_coin } => add_tx(_deps, _env, _info, owner, output_coin),
+        ExecuteMsg::AddTx { owner, output_coin } => add_tx(deps, env, info, owner, output_coin),
+        ExecuteMsg::FulfillTx { tx_id } => fulfill_tx(deps, env, info, tx_id),
+        ExecuteMsg::RemoveTx { tx_id } => remove_tx(deps, env, info, tx_id),
     }
 }
 
 /// Handling contract query
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(_deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        // Find matched incoming message variant and query them your custom logic
-        // and then construct your query response with the type usually defined
-        // `msg.rs` alongside with the query message itself.
-        //
-        // use `cosmwasm_std::to_binary` to serialize query response to json binary.
+        QueryMsg::GetPendingTxs {} => query_pending_txs(deps),
+        QueryMsg::GetFulfilledTxs {} => query_fulfilled_txs(deps),
     }
 }
 
