@@ -91,7 +91,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
     deps.api
         .debug(&format!("executing bank send reply: {msg:?}"));
-    if msg.id.clone() == FULFILL_ID {
+    if msg.id == FULFILL_ID {
         let msg_clone = msg.clone();
 
         let fulfill_reply_state = FULFILL_REPLY_STATES.load(deps.storage, msg_clone.id)?;

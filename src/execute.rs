@@ -65,17 +65,14 @@ pub fn fulfill_pending_tx(
 
     let tx_position = state.pending_txs.iter().position(|tx| tx.id == tx_id);
 
-    let tx: Tx;
-    match tx_position {
-        Some(index) => {
-            tx = state.pending_txs[index].clone();
-        }
+    let tx = match tx_position {
+        Some(index) => state.pending_txs[index].clone(),
         None => {
             return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
                 "Transaction not found",
             )));
         }
-    }
+    };
 
     let coins: Vec<Coin> = info.funds;
     if coins.len() != 1 {
