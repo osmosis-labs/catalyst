@@ -1,5 +1,6 @@
 # Catalyst
 
+<!-- markdownlint-disable MD033 -->
 <p align="center">
   <img src="./assets/Catalyst.png" alt="Catalyst" width="35%">
 </p>

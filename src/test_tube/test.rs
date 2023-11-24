@@ -8,7 +8,7 @@ mod tests {
     #[test]
     #[ignore]
     fn tx_lifecycle_fulfilled() {
-        let (app, contract_address, _cl_pool_id, _admin, module_account) = default_init();
+        let (app, contract_address, _admin, module_account) = default_init();
         let wasm = Wasm::new(&app);
 
         // In this example, dest is the destination the tx creator wants to bridge funds to
@@ -92,7 +92,7 @@ mod tests {
     #[test]
     #[ignore]
     fn tx_lifecycle_not_fulfilled() {
-        let (app, contract_address, _cl_pool_id, _admin, module_account) = default_init();
+        let (app, contract_address, _admin, module_account) = default_init();
         let wasm = Wasm::new(&app);
 
         // In this example, dest is the destination the tx creator wants to bridge funds to
