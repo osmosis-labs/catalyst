@@ -5,7 +5,6 @@ on: [push, pull_request]
 name: Basic
 
 jobs:
-
   test:
     name: Test Suite
     runs-on: ubuntu-latest
@@ -42,27 +41,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: 1.58.1
-          override: true
-          components: rustfmt, clippy
+      - name: Install cargo make
+        uses: davidB/rust-cargo-make@v1
+
+      - name: Install stable Rust
+        run: cargo make install-stable
+
+      - name: Install nightly Rust
+        run: cargo make install-nightly
+
+      # selecting a toolchain should happen before the plugin, as the cache uses the current rustc version as its cache key
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
 
       - name: Run cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo make fmt
 
       - name: Run cargo clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -D warnings
+        run: cargo make clippy
 
       - name: Generate Schema
         uses: actions-rs/cargo@v1
