@@ -423,8 +423,8 @@ mod tests {
         let mut state: State = STATE.load(deps.as_mut().storage).unwrap();
         state.fulfilled_txs.push(Tx {
             id: 0,
-            destination_addr: destination_addr,
-            coin: coin,
+            destination_addr,
+            coin,
         });
         STATE.save(deps.as_mut().storage, &state).unwrap();
 
