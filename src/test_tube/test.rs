@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::msg::ExecuteMsg;
-    use crate::test_tube::initialize::initialize::default_init;
+    use crate::test_tube::init::initialize::default_init;
     use cosmwasm_std::Coin;
     use osmosis_test_tube::{Account, Module, Wasm};
 

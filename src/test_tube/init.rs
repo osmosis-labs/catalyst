@@ -49,7 +49,7 @@ pub mod initialize {
             .instantiate(
                 code_id,
                 &InstantiateMsg {
-                    module_account: module_account.address().to_string(),
+                    module_account: module_account.address(),
                 },
                 Some(admin.address().as_str()),
                 Some("cl-vault"),

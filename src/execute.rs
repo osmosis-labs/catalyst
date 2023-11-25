@@ -241,8 +241,8 @@ mod tests {
         // Call add_tx
         add_pending_tx(
             deps.as_mut(),
-            env.clone(),
-            info.clone(),
+            env,
+            info,
             destination_addr.clone(),
             coin.clone(),
         )
@@ -283,13 +283,13 @@ mod tests {
             deps.as_mut(),
             env.clone(),
             info.clone(),
-            destination_addr.clone(),
-            coin.clone(),
+            destination_addr,
+            coin,
         )
         .unwrap();
 
         // Fulfill the transaction
-        let result = fulfill_pending_tx(deps.as_mut(), env.clone(), info.clone(), 0);
+        let result = fulfill_pending_tx(deps.as_mut(), env, info, 0);
 
         // Check if the transaction was fulfilled successfully
         assert!(result.is_ok());
@@ -321,8 +321,8 @@ mod tests {
             deps.as_mut(),
             env.clone(),
             info.clone(),
-            destination_addr.clone(),
-            coin.clone(),
+            destination_addr,
+            coin,
         )
         .unwrap();
 
@@ -337,7 +337,7 @@ mod tests {
         // Move the transaction to fulfilled transactions
         move_pending_tx_to_fulfilled_tx(
             deps.as_mut(),
-            env.clone(),
+            env,
             msg,
             FulfillState {
                 fulfiller_addr: info.sender,
@@ -388,14 +388,14 @@ mod tests {
         }
 
         // Remove one transaction
-        remove_pending_tx(deps.as_mut(), env.clone(), info.clone(), 1).unwrap();
+        remove_pending_tx(deps.as_mut(), env, info, 1).unwrap();
 
         // Load state from storage
         let state: State = STATE.load(deps.as_ref().storage).unwrap();
 
         // Check if only 2 transactions remain
         assert_eq!(state.pending_txs.len(), 2);
-        assert!(state.pending_txs.iter().find(|&tx| tx.id == 1).is_none());
+        assert!(!state.pending_txs.iter().any(|tx| tx.id == 1));
     }
 
     #[test]
@@ -423,13 +423,13 @@ mod tests {
         let mut state: State = STATE.load(deps.as_mut().storage).unwrap();
         state.fulfilled_txs.push(Tx {
             id: 0,
-            destination_addr: destination_addr.clone(),
-            coin: coin.clone(),
+            destination_addr: destination_addr,
+            coin: coin,
         });
         STATE.save(deps.as_mut().storage, &state).unwrap();
 
         // Remove the transaction
-        let result = remove_fulfilled_tx(deps.as_mut(), env.clone(), info.clone(), 0);
+        let result = remove_fulfilled_tx(deps.as_mut(), env, info, 0);
 
         // Check if the transaction was removed successfully
         assert!(result.is_ok());

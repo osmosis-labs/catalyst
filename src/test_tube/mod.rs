@@ -1,2 +1,2 @@
-mod initialize;
+mod init;
 mod test;

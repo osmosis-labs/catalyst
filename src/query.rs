@@ -59,7 +59,7 @@ mod tests {
 
         // Query all transactions
         let result = query_pending_txs(deps.as_ref()).unwrap();
-        let response: GetTxsResponse = from_json(&result).unwrap();
+        let response: GetTxsResponse = from_json(result).unwrap();
 
         // Check if the returned result contains the 3 transactions
         assert_eq!(response.txs.len(), 3);
