@@ -58,12 +58,32 @@ mod tests {
             .unwrap();
         }
 
-        // Query all transactions
+        // Create a Reply message
+        let msg = Reply {
+            id: 0,
+            result: SubMsgResult::Ok(SubMsgResponse {
+                data: Some(Binary::from(vec![0u8, 1, 2])),
+                events: vec![],
+            }),
+        };
+
+        // Fulfill one of the transactions
+        move_pending_tx_to_fulfilled_tx(
+            deps.as_mut(),
+            env,
+            msg,
+            FulfillState {
+                fulfiller_addr: info.sender,
+            },
+        )
+        .unwrap();
+
+        // Query all pending transactions
         let result = query_pending_txs(deps.as_ref()).unwrap();
         let response: GetTxsResponse = from_json(result).unwrap();
 
-        // Check if the returned result contains the 3 transactions
-        assert_eq!(response.txs.len(), 3);
+        // Check if the returned result contains the 2 transactions
+        assert_eq!(response.txs.len(), 2);
     }
 
     #[test]
@@ -119,7 +139,7 @@ mod tests {
         )
         .unwrap();
 
-        // Query all transactions
+        // Query all fulfilled transactions
         let result = query_fulfilled_txs(deps.as_ref()).unwrap();
         let response: GetTxsResponse = from_json(result).unwrap();
 

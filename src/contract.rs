@@ -11,7 +11,6 @@ use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 use crate::query::{query_fulfilled_txs, query_pending_txs};
 use crate::state::{State, FULFILL_REPLY_STATES, STATE};
 
-// version info for migration info
 pub const FULFILL_ID: u64 = 1u64;
 const CONTRACT_NAME: &str = "crates.io:catalyst";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -91,6 +90,8 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
     deps.api
         .debug(&format!("executing bank send reply: {msg:?}"));
+
+    // If the message is a fulfill message, then we need to move the pending tx to fulfilled tx.
     if msg.id == FULFILL_ID {
         let msg_clone = msg.clone();
 

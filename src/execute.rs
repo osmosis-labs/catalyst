@@ -30,23 +30,25 @@ pub fn add_pending_tx(
 ) -> Result<Response, ContractError> {
     let mut state: State = STATE.load(deps.storage).map_err(ContractError::Std)?;
 
-    // Check if the sender is the module account
+    // The sender must be the module account that is set at time of instantiation
     if info.sender != state.module_account {
         return Err(ContractError::Unauthorized {});
     }
 
+    // Add the transaction to the pending transactions store
     let new_id = state.next_id;
     state.pending_txs.push(Tx {
         id: new_id,
         destination_addr,
         coin,
     });
+
+    // Increment the id counter for the next transaction
     state.next_id += 1;
 
     STATE
         .save(deps.storage, &state)
         .map_err(ContractError::Std)?;
-
     Ok(Response::new())
 }
 
@@ -63,29 +65,43 @@ pub fn fulfill_pending_tx(
 ) -> Result<Response, ContractError> {
     let state: State = STATE.load(deps.storage).map_err(ContractError::Std)?;
 
+    // Find the transaction index in the pending transactions store via the tx_id
     let tx_position = state.pending_txs.iter().position(|tx| tx.id == tx_id);
 
+    // Pull the transaction from the pending transactions store
     let tx = match tx_position {
         Some(index) => state.pending_txs[index].clone(),
         None => {
-            return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
-                "Transaction not found",
-            )));
+            return Err(ContractError::TransactionNotFound { id: (tx_id) });
         }
     };
 
+    // We only support providing a single coin
     let coins: Vec<Coin> = info.funds;
     if coins.len() != 1 {
-        return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
-            "Expected exactly one coin",
-        )));
+        return Err(ContractError::MultipleCoinError {
+            num_coins: (coins.len()),
+        });
     }
-    let coin = coins[0].clone();
+
+    // The amount provided must match the amount specified in the pending transaction
+    // TODO: Make this just refund user if too much is provided
+    if coins[0] != tx.coin {
+        return Err(ContractError::CustomError {
+            val: "Amount provided does not match amount specified in pending transaction"
+                .to_string(),
+        });
+    }
+
+    // Prepare the bank send message
     let bank_send_msg = BankMsg::Send {
         to_address: tx.clone().destination_addr,
-        amount: vec![coin],
+        amount: coins,
     };
 
+    // We must store the fulfill state in order to set the address of the market maker
+    // that fulfilled the transaction as the destination after we confirm the bank send
+    // was successful.
     FULFILL_REPLY_STATES.save(
         deps.storage,
         tx.id,
@@ -112,7 +128,11 @@ pub fn move_pending_tx_to_fulfilled_tx(
     if let SubMsgResult::Ok(_) = msg.result {
         let mut state: State = STATE.load(deps.storage).map_err(ContractError::Std)?;
 
+        // Find the transaction index in the pending transactions store via the tx_id
         let tx_position = state.pending_txs.iter().position(|tx| tx.id == msg.id);
+
+        // Pull the transaction from the pending transactions store
+        // and move it to the fulfilled transactions store
         match tx_position {
             Some(index) => {
                 let mut tx = state.pending_txs.remove(index);
@@ -120,9 +140,7 @@ pub fn move_pending_tx_to_fulfilled_tx(
                 state.fulfilled_txs.push(tx);
             }
             None => {
-                return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
-                    "Transaction not found",
-                )));
+                return Err(ContractError::TransactionNotFound { id: (msg.id) });
             }
         }
 
@@ -133,9 +151,7 @@ pub fn move_pending_tx_to_fulfilled_tx(
         return Ok(Response::new());
     }
 
-    Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
-        "Transaction not found",
-    )))
+    return Err(ContractError::TransactionNotFound { id: (msg.id) });
 }
 
 // remove_pending_tx is called by the contract when a pending incoming transaction
@@ -161,9 +177,7 @@ pub fn remove_pending_tx(
             state.pending_txs.remove(index);
         }
         None => {
-            return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
-                "Transaction not found",
-            )));
+            return Err(ContractError::TransactionNotFound { id: (tx_id) });
         }
     }
 
@@ -195,9 +209,7 @@ pub fn remove_fulfilled_tx(
             state.fulfilled_txs.remove(index);
         }
         None => {
-            return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
-                "Transaction not found",
-            )));
+            return Err(ContractError::TransactionNotFound { id: (tx_id) });
         }
     }
 
