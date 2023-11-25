@@ -3,9 +3,8 @@
 # on: [pull_request]
 
 on:
-  push:
-    tags:
-      - "*"
+  release:
+    types: [created]
 
 name: Release artifacts
 
