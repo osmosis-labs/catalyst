@@ -28,7 +28,7 @@ mod tests {
     fn test_query_all_txs() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let info = mock_info("sender", &coins(2, "token"));
+        let info = mock_info("module_account", &coins(2, "token"));
 
         let owner = "owner".to_string();
         let output_coin = Coin {
