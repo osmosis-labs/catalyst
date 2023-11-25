@@ -1,35 +1,50 @@
-name: release wasm
+# Based on https://github.com/actions-rs/example/blob/master/.github/workflows/quickstart.yml
+
+# on: [pull_request]
 
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - "*"
+
+name: Release artifacts
 
 jobs:
   release:
+    name: Build Release Artifacts
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
-      - name: Install cargo-run-script
-        uses: actions-rs/cargo@v1
+
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
         with:
-          command: install
-          args: cargo-run-script
-      - name: Run cargo optimize
-        uses: actions-rs/cargo@v1
+          profile: minimal
+          toolchain: 1.70.0
+          target: wasm32-unknown-unknown
+          override: true
+
+      - name: Build schemas
+        run: ./devtools/build_schemas.sh
+
+      # This must go after the other cargo commands, as it writes lots of stuff to
+      # target/ with root permissions (from docker)
+      - name: Build Wasm images
+        uses: addnab/docker-run-action@v3
         with:
-          command: run-script
-          args: optimize
-      - name: Get release ID
-        id: get_release
-        uses: bruceadams/get-release@v1.2.3
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-      - name: Upload optimized wasm
-        uses: svenstaro/upload-release-action@v2
+          image: cosmwasm/workspace-optimizer:0.12.13
+          options: -v ${{ github.workspace }}:/code
+          run: optimize_workspace.sh
+
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        id: create_release
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ./artifacts/*.wasm
-          tag: ${{ github.ref }}
-          overwrite: true
-          file_glob: true
+          draft: false
+          prerelease: false
+          body_path: RELEASE_NOTES.md
+          tag_name: ${{ github.ref }}
+          files: |
+            artifacts/*
+            schemas/*
