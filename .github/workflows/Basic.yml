@@ -41,26 +41,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v3
+        uses: actions/checkout@v2
 
-      - name: Install cargo make
-        uses: davidB/rust-cargo-make@v1
-
-      - name: Install stable Rust
-        run: cargo make install-stable
-
-      - name: Install nightly Rust
-        run: cargo make install-nightly
-
-      # selecting a toolchain should happen before the plugin, as the cache uses the current rustc version as its cache key
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: 1.58.1
+          override: true
+          components: rustfmt, clippy
 
       - name: Run cargo fmt
-        run: cargo make fmt
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
 
       - name: Run cargo clippy
-        run: cargo make clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -- -D warnings
 
       - name: Generate Schema
         uses: actions-rs/cargo@v1
